@@ -1,0 +1,12 @@
+{
+  "name": "joburg-hospital",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node backend/server.js",
+    "install:backend": "npm install --prefix backend"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

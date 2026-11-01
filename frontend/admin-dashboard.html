@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard | Joburg Hospital</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <style>
+    .dash-section { display: none; }
+    .dash-section.active-section {
+      display: block;
+      animation: fadeIn 0.35s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .status-available,
+    .status-on-duty,
+    .status-replied,
+    .status-paid { background: #D1FAE5; color: #065F46; }
+    .status-unavailable,
+    .status-off { background: #FEE2E2; color: #991B1B; }
+    .status-new,
+    .status-pending { background: #DBEAFE; color: #1E40AF; }
+    .status-read { background: #E0E7FF; color: #3730A3; }
+    .status-patient,
+    .status-claimed { background: #FEF3C7; color: #92400E; }
+    .active-folder {
+      background: #0B6E4F !important;
+      color: #fff !important;
+      border-color: #0B6E4F !important;
+    }
+    #btnNewMessage {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .table-responsive { overflow-x: auto; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+    .form-control {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      z-index: 3000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-box {
+      background: #fff;
+      width: 100%;
+      border-radius: 14px;
+      max-height: 90vh;
+      overflow: auto;
+    }
+    .modal-box.sm { max-width: 480px; }
+    .modal-box.md { max-width: 520px; }
+    .modal-box.lg { max-width: 640px; }
+    .modal-head {
+      padding: 16px 20px;
+      border-bottom: 1px solid #E2E8F0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-head h3 { margin: 0; font-size: 1.05rem; }
+    .modal-body { padding: 20px; }
+    .modal-foot {
+      padding: 14px 20px;
+      border-top: 1px solid #E2E8F0;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .msg-panel {
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 14px;
+      white-space: pre-wrap;
+    }
+    .msg-panel.plain { background: #F8FAFC; border: 1px solid #E2E8F0; }
+    .msg-panel.reply { background: #ECFDF5; border: 1px solid #A7F3D0; }
+    .msg-panel.patient { background: #FEF3C7; border: 1px solid #FCD34D; }
+    .msg-toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .card-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #msgBadge {
+      display: none;
+      margin-left: 6px;
+      background: #EF4444;
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="dashboard-body">
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <img src="images/imageslogo.jpg" alt="Logo" onerror="this.style.display='none'">
+    <h2>Joburg <span>Hospital</span></h2>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="overview">
+      <i class="fas fa-home"></i> Dashboard
+    </a>
+    <a href="#" class="nav-item" data-section="doctors">
+      <i class="fas fa-user-md"></i> Doctors
+    </a>
+    <a href="#" class="nav-item" data-section="pharmacists">
+      <i class="fas fa-pills"></i> Pharmacists
+    </a>
+    <a href="#" class="nav-item" data-section="patients">
+      <i class="fas fa-users"></i> Patients
+    </a>
+    <a href="#" class="nav-item" data-section="appointments">
+      <i class="fas fa-calendar-check"></i> Appointments
+    </a>
+    <a href="#" class="nav-item" data-section="invoices">
+      <i class="fas fa-file-invoice-dollar"></i> Invoices
+    </a>
+    <a href="#" class="nav-item" data-section="messages">
+      <i class="fas fa-envelope"></i> Messages
+      <span id="msgBadge">0</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar" id="userInitials">A</div>
+      <div class="user-details">
+        <h4 id="userName">Admin</h4>
+        <p>Administrator</p>
+      </div>
+    </div>
+    <button type="button" class="logout-btn" id="logoutBtn">
+      <i class="fas fa-sign-out-alt"></i> Logout
+    </button>
+  </div>
+</aside>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="main-content">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button type="button" class="menu-btn" id="menuBtn">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="page-title">
+        <h1 id="pageTitle">Dashboard</h1>
+        <p>Hospital administration</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="dashboard-content">
+
+    <section class="dash-section active-section" id="section-overview">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon green"><i class="fas fa-user-md"></i></div>
+          <div class="stat-info">
+            <h3 id="statDoctors">0</h3>
+            <p>Doctors</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon blue"><i class="fas fa-users"></i></div>
+          <div class="stat-info">
+            <h3 id="statPatients">0</h3>
+            <p>Patients</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon orange"><i class="fas fa-calendar-check"></i></div>
+          <div class="stat-info">
+            <h3 id="statAppointments">0</h3>
+            <p>Appointments</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple"><i class="fas fa-envelope"></i></div>
+          <div class="stat-info">
+            <h3 id="statMessages">0</h3>
+            <p>Messages</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-doctors">
+      <div class="card">
+        <div class="card-header"><h3>Doctors</h3></div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Specialization</th>
+                  <th>Fees (First / Follow-up)</th>
+                  <th>Status</th>
+                  <th>Available Days</th>
+                </tr>
+              </thead>
+              <tbody id="doctorsBody">
+                <tr><td colspan="6" style="text-align:center;color:#64748B;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-pharmacists">
+      <div class="card">
+        <div class="card-header"><h3>Pharmacists</h3></div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Duty Status</th>
+                </tr>
+              </thead>
+              <tbody id="pharmacistsBody">
+                <tr><td colspan="5" style="text-align:center;color:#64748B;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-patients">
+      <div class="card">
+        <div class="card-header"><h3>Patients</h3></div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID Number</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Payment Method</th>
+                </tr>
+              </thead>
+              <tbody id="patientsBody">
+                <tr><td colspan="5" style="text-align:center;color:#64748B;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-appointments">
+      <div class="card">
+        <div class="card-header"><h3>Appointments</h3></div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Doctor</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Status</th>
+                  <th>Visit Type</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="appointmentsBody">
+                <tr><td colspan="7" style="text-align:center;color:#64748B;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-invoices">
+      <div class="card">
+        <div class="card-header"><h3>Invoices</h3></div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bill #</th>
+                  <th>Patient</th>
+                  <th>Doctor</th>
+                  <th>Consultation</th>
+                  <th>Pharmacy</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="invoicesBody">
+                <tr><td colspan="9" style="text-align:center;color:#64748B;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-messages">
+      <div class="card">
+        <div class="card-header card-header-row">
+          <h3><i class="fas fa-envelope"></i> Messages</h3>
+          <div class="msg-toolbar">
+            <button type="button" id="btnInbox" class="btn btn-outline btn-sm active-folder">
+              <i class="fas fa-inbox"></i> Inbox
+            </button>
+            <button type="button" id="btnArchiveFolder" class="btn btn-outline btn-sm">
+              <i class="fas fa-archive"></i> Archive
+            </button>
+            <button type="button" id="btnNewMessage" class="btn btn-primary btn-sm" title="New Message" aria-label="New Message">
+              <i class="fas fa-pen"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Subject</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="messagesBody">
+                <tr><td colspan="7" style="text-align:center;color:#64748B;">No messages</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div class="modal-overlay" id="generateBillModal">
+  <div class="modal-box sm">
+    <div class="modal-head">
+      <h3>Generate Invoice</h3>
+    </div>
+    <div class="modal-body">
+      <p><strong>Patient:</strong> <span id="billPatientName">—</span></p>
+      <p><strong>Doctor:</strong> <span id="billDoctorName">—</span></p>
+      <p><strong>Visit type:</strong> <span id="billVisitType">—</span></p>
+      <p><strong>Consultation:</strong> R <span id="billConsultationFee">0.00</span></p>
+      <p><strong>Pharmacy:</strong> R <span id="billPharmacyFee">0.00</span></p>
+      <p><strong>Total:</strong> R <span id="billTotalAmount">0.00</span></p>
+      <div class="form-group" style="margin-top:12px;">
+        <label for="billPaymentMethod">Payment Method</label>
+        <select id="billPaymentMethod" class="form-control">
+          <option value="Cash">Cash</option>
+          <option value="Card">Card</option>
+          <option value="Medical Aid">Medical Aid</option>
+          <option value="EFT">EFT</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline" id="cancelGenerateBill">Cancel</button>
+      <button type="button" class="btn btn-primary" id="confirmGenerateBillBtn">Generate Invoice</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="newMsgModal">
+  <div class="modal-box md">
+    <div class="modal-head">
+      <h3><i class="fas fa-pen"></i> New Message</h3>
+      <button type="button" class="btn btn-outline btn-sm" id="closeNewMsgModal">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="adminComposeForm">
+        <div class="form-group">
+          <label for="newMsgEmail">To (Email) *</label>
+          <input type="email" id="newMsgEmail" class="form-control" required placeholder="patient@email.com">
+        </div>
+        <div class="form-group">
+          <label for="newMsgName">Name</label>
+          <input type="text" id="newMsgName" class="form-control" placeholder="Patient name">
+        </div>
+        <div class="form-group">
+          <label for="newMsgSubject">Subject *</label>
+          <input type="text" id="newMsgSubject" class="form-control" required placeholder="Subject">
+        </div>
+        <div class="form-group">
+          <label for="newMsgBody">Message *</label>
+          <textarea id="newMsgBody" class="form-control" rows="5" required placeholder="Type your message..."></textarea>
+        </div>
+        <div class="modal-foot" style="padding:0;border:none;margin-top:16px;">
+          <button type="button" class="btn btn-outline" id="cancelNewMsg">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Send</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="msgModal">
+  <div class="modal-box lg">
+    <div class="modal-head">
+      <h3>Message Details</h3>
+      <button type="button" class="btn btn-outline btn-sm" id="closeMsgModal">Close</button>
+    </div>
+    <div class="modal-body">
+      <p><strong>From:</strong> <span id="msgFrom">—</span></p>
+      <p><strong>Email:</strong> <span id="msgEmail">—</span></p>
+      <p><strong>Subject:</strong> <span id="msgSubject">—</span></p>
+      <p><strong>Date:</strong> <span id="msgDate">—</span></p>
+      <p><strong>Status:</strong> <span id="msgStatus" class="status-pill">—</span></p>
+      <p style="margin-top:14px;"><strong>Original Message:</strong></p>
+      <div id="msgBody" class="msg-panel plain"></div>
+      <div id="adminReplyBox" style="display:none;margin-bottom:14px;">
+        <p><strong>Hospital Reply:</strong></p>
+        <div id="adminReplyText" class="msg-panel reply"></div>
+      </div>
+      <div id="adminPatientReplyBox" style="display:none;margin-bottom:14px;">
+        <p><strong>Patient Reply:</strong></p>
+        <div id="adminPatientReplyText" class="msg-panel patient"></div>
+      </div>
+      <div id="adminReplyFormBox" style="display:none;margin-top:16px;border-top:1px solid #E2E8F0;padding-top:16px;">
+        <label for="adminReplyInput"><strong>Write Reply</strong></label>
+        <textarea id="adminReplyInput" class="form-control" rows="4" placeholder="Type your reply..."></textarea>
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <button type="button" class="btn btn-primary btn-sm" id="btnSendAdminReply">
+            <i class="fas fa-paper-plane"></i> Send Reply
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnCancelAdminReply">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-primary btn-sm" id="btnShowAdminReply">
+        <i class="fas fa-reply"></i> Reply
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" id="btnArchiveMsg">
+        <i class="fas fa-archive"></i> <span id="archiveBtnLabel">Archive</span>
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" id="btnCloseMsgModal2">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script src="js/admin-dashboard.js"></script>
+</body>
+</html>
