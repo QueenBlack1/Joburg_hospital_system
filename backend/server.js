@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 const cors = require("cors");
 const { Pool } = require ('pg');
+const msql = require('mysql2/promise');
 const bcrypt = require("bcryptjs")
 const app = express();
 const PORT = process.env.PORT || 5000;
