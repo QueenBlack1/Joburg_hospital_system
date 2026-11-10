@@ -2,32 +2,37 @@ const express = require("express");
 const path = require("path");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
-const bcrypt = require("bcryptjs");
-
+const bcrypt = require("bcryptjs")
 const app = express();
 const PORT = process.env.PORT || 5000;
-const frontendPath = path.join(__dirname, "..", "frontend");
 
 const db = mysql.createPool({
-  host: "127.0.0.1",
-  user: "root",
-  password: "",
-  database: "joburg_hospital",
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "joburg_hospital",
   waitForConnections: true,
-  connectionLimit: 10
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
 async function testDatabase() {
   try {
-    const conn = await db.getConnection();
-    console.log("MySQL connected successfully");
-    conn.release();
+    const connection = await db.getConnection();
+    console.log("✅ MySQL connected successfully");
+    connection.release();
     return true;
   } catch (err) {
-    console.error("MySQL connection failed:", err.message);
+    console.error("❌ MySQL connection failed:", err.message);
     return false;
   }
 }
+
+app.use(cors());
+app.use(express.json({ limit: "5mb" }));
+
+const frontendPath = path.join(__dirname, "..", "frontend"); // adjust if your frontend folder has a different name
+app.use(express.static(frontendPath));
 
 async function getPatientIdNumber(userId) {
   try {
@@ -35,6 +40,7 @@ async function getPatientIdNumber(userId) {
       "SELECT email, id_number FROM users WHERE user_id = ? LIMIT 1",
       [userId]
     );
+
     if (!users.length) return null;
     if (users[0].id_number) return String(users[0].id_number).trim();
 
@@ -42,15 +48,12 @@ async function getPatientIdNumber(userId) {
       "SELECT id_number FROM patients WHERE email = ? LIMIT 1",
       [users[0].email]
     );
+
     return patients.length ? String(patients[0].id_number).trim() : null;
   } catch (err) {
     return null;
   }
 }
-
-app.use(cors());
-app.use(express.json({ limit: "5mb" }));
-app.use(express.static(frontendPath));
 
 app.get("/", (req, res) => res.sendFile(path.join(frontendPath, "login.html")));
 app.get("/login", (req, res) => res.sendFile(path.join(frontendPath, "login.html")));
@@ -172,6 +175,7 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
+
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -213,7 +217,6 @@ app.post("/api/login", async (req, res) => {
     res.status(500).json({ success: false, message: "Login failed." });
   }
 });
-
 
 app.get("/api/profile/:userId", async (req, res) => {
   try {
@@ -328,8 +331,6 @@ app.put("/api/users/profile/:userId", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-
 app.get("/api/doctors", async (req, res) => {
   try {
     const [doctors] = await db.execute(
@@ -490,7 +491,6 @@ app.put("/api/doctors/signature/:userId", async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to save signature." });
   }
 });
-
 app.get("/api/patients", async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -586,7 +586,6 @@ app.put("/api/patients/profile/:userId", async (req, res) => {
     });
   }
 });
-
 app.get("/api/pharmacists", async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -621,11 +620,10 @@ app.put("/api/pharmacists/signature/:userId", async (req, res) => {
     }
     res.json({ success: true, message: "Signature saved successfully." });
   } catch (err) {
-    console.error("Save pharmacists signature error:", err);
+    console.error("Save pharmacist signature error:", err);
     res.status(500).json({ success: false, message: "Failed to save signature." });
   }
 });
-
 app.get("/api/medicines", async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -694,7 +692,6 @@ app.post("/api/medicines", async (req, res) => {
 
     const entryDate = date_of_entry || new Date().toISOString().slice(0, 10);
 
-    // Auto status from quantity
     let status = "In Stock";
     if (qty === 0) status = "Out of Stock";
     else if (qty <= (Number(reorder_level) || 10)) status = "Low Stock";
@@ -755,7 +752,6 @@ app.put("/api/medicines/:id", async (req, res) => {
       status
     } = req.body;
 
-    // Auto status if quantity is sent and status is not forced
     let finalStatus = status || null;
     if (quantity != null && finalStatus == null) {
       const qty = Number(quantity);
@@ -816,7 +812,6 @@ app.put("/api/medicines/:id", async (req, res) => {
     });
   }
 });
-
 app.post("/api/prescriptions", async (req, res) => {
   try {
     const { id_number, doctor_id, notes, instructions, items, doctor_signature } = req.body;
@@ -1053,8 +1048,6 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-
 app.get("/api/pharmacy-sales", async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -1094,7 +1087,6 @@ app.put("/api/pharmacy-sales/:id/status", async (req, res) => {
   }
 });
 
-
 app.get("/api/appointments", async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -1130,7 +1122,6 @@ app.get("/api/appointments", async (req, res) => {
     });
   }
 });
-
 
 app.get("/api/appointments/my", async (req, res) => {
   try {
@@ -1348,7 +1339,6 @@ app.get("/api/appointments/:id", async (req, res) => {
   }
 });
 
-
 app.put("/api/appointments/:id/status", async (req, res) => {
   try {
     const { status, visit_type } = req.body;
@@ -1483,11 +1473,8 @@ async function saveAppointmentNotes(req, res) {
   }
 }
 
-
 app.post("/api/appointments/:id/notes", saveAppointmentNotes);
-
 app.put("/api/appointments/:id/notes", saveAppointmentNotes);
-
 
 app.get("/api/bills", async (req, res) => {
   try {
@@ -1760,7 +1747,6 @@ app.put("/api/bills/:id/status", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 app.post("/api/contact", async (req, res) => {
   try {
     const body = req.body || {};
@@ -1882,7 +1868,6 @@ app.get("/api/contact/messages/:id", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 app.put("/api/contact/messages/:id/reply", async (req, res) => {
   try {
@@ -2031,6 +2016,9 @@ app.put("/api/contact/messages/:id/archive", async (req, res) => {
   }
 });
 
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "Server is healthy" });
+});
 
 app.use((req, res) => {
   res.status(404).json({
@@ -2039,7 +2027,6 @@ app.use((req, res) => {
     path: req.originalUrl
   });
 });
-
 async function startServer() {
   const ok = await testDatabase();
 
