@@ -1,20 +1,16 @@
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
-const mysql = require("mysql2/promise");
+const { Pool } = require ('pg');
 const bcrypt = require("bcryptjs")
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const db = process.env.DATABASE_URL ? mysql.createPool(process.env.DATABASE_URL)
-: mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "joburg_hospital",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+const db = new Pool ({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 async function testDatabase() {
@@ -37,7 +33,7 @@ app.use(express.static(frontendPath));
 
 async function getPatientIdNumber(userId) {
   try {
-    const [users] = await db.execute(
+    const [users] = await db.query(
       "SELECT email, id_number FROM users WHERE user_id = ? LIMIT 1",
       [userId]
     );
@@ -45,7 +41,7 @@ async function getPatientIdNumber(userId) {
     if (!users.length) return null;
     if (users[0].id_number) return String(users[0].id_number).trim();
 
-    const [patients] = await db.execute(
+    const [patients] = await db.query(
       "SELECT id_number FROM patients WHERE email = ? LIMIT 1",
       [users[0].email]
     );
@@ -97,7 +93,7 @@ app.post("/api/register", async (req, res) => {
     const cleanEmail = email.toLowerCase().trim();
     const cleanId = idNumber ? String(idNumber).trim() : null;
 
-    const [existingEmail] = await db.execute("SELECT user_id FROM users WHERE email = ?", [
+    const [existingEmail] = await db.query("SELECT user_id FROM users WHERE email = ?", [
       cleanEmail
     ]);
     if (existingEmail.length > 0) {
@@ -106,7 +102,7 @@ app.post("/api/register", async (req, res) => {
 
     if (cleanId) {
       try {
-        const [existingId] = await db.execute(
+        const [existingId] = await db.query(
           "SELECT id_number FROM patients WHERE id_number = ?",
           [cleanId]
         );
@@ -128,14 +124,14 @@ app.post("/api/register", async (req, res) => {
 
     let userId;
     try {
-      const [result] = await db.execute(
+      const [result] = await db.query(
         `INSERT INTO users (full_name, email, password, phone, id_number, role)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [fullName, cleanEmail, hashed, phone || null, cleanId, dbRole]
       );
       userId = result.insertId;
     } catch (e) {
-      const [result] = await db.execute(
+      const [result] = await db.query(
         `INSERT INTO users (full_name, email, password, phone, role) VALUES (?, ?, ?, ?, ?)`,
         [fullName, cleanEmail, hashed, phone || null, dbRole]
       );
@@ -181,7 +177,7 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       "SELECT user_id, full_name, email, password, role, status FROM users WHERE email = ?",
       [String(email || "").toLowerCase().trim()]
     );
@@ -222,7 +218,7 @@ app.post("/api/login", async (req, res) => {
 app.get("/api/profile/:userId", async (req, res) => {
   try {
     const userId = Number(req.params.userId);
-    const [users] = await db.execute("SELECT * FROM users WHERE user_id = ?", [userId]);
+    const [users] = await db.query("SELECT * FROM users WHERE user_id = ?", [userId]);
     if (!users.length) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
@@ -233,20 +229,20 @@ app.get("/api/profile/:userId", async (req, res) => {
 
     if (role === "Patient") {
       try {
-        const [rows] = await db.execute(
+        const [rows] = await db.query(
           "SELECT * FROM patients WHERE email = ? OR id_number = ? LIMIT 1",
           [user.email, user.id_number || ""]
         );
         profile = rows[0] || {};
       } catch (_) {}
     } else if (role === "Doctor") {
-      const [rows] = await db.execute("SELECT * FROM doctors WHERE user_id = ?", [userId]);
+      const [rows] = await db.query("SELECT * FROM doctors WHERE user_id = ?", [userId]);
       profile = rows[0] || {};
     } else if (role === "Administrator") {
-      const [rows] = await db.execute("SELECT * FROM administrators WHERE user_id = ?", [userId]);
+      const [rows] = await db.query("SELECT * FROM administrators WHERE user_id = ?", [userId]);
       profile = rows[0] || {};
     } else if (role === "Pharmacist") {
-      const [rows] = await db.execute("SELECT * FROM pharmacists WHERE user_id = ?", [userId]);
+      const [rows] = await db.query("SELECT * FROM pharmacists WHERE user_id = ?", [userId]);
       profile = rows[0] || {};
     }
 
@@ -275,7 +271,7 @@ app.put("/api/users/profile/:userId", async (req, res) => {
         ? ((first_name || "").trim() + " " + (last_name || "").trim()).trim()
         : null;
 
-    await db.execute(
+    await db.query(
       `UPDATE users SET full_name = COALESCE(?, full_name), phone = COALESCE(?, phone)
        WHERE user_id = ?`,
       [fullName, phone || null, userId]
@@ -286,7 +282,7 @@ app.put("/api/users/profile/:userId", async (req, res) => {
       const role = users[0].role;
 
       if (role === "Administrator") {
-        await db.execute(
+        await db.query(
           `UPDATE administrators SET
              first_name = COALESCE(?, first_name),
              last_name = COALESCE(?, last_name),
@@ -304,7 +300,7 @@ app.put("/api/users/profile/:userId", async (req, res) => {
           ]
         );
       } else if (role === "Pharmacist") {
-        await db.execute(
+        await db.query(
           `UPDATE pharmacists SET
              first_name = COALESCE(?, first_name),
              last_name = COALESCE(?, last_name),
@@ -334,7 +330,7 @@ app.put("/api/users/profile/:userId", async (req, res) => {
 });
 app.get("/api/doctors", async (req, res) => {
   try {
-    const [doctors] = await db.execute(
+    const [doctors] = await db.query(
       `SELECT
          doctor_id, user_id,
          COALESCE(full_name, CONCAT(first_name, ' ', last_name)) AS full_name,
@@ -388,7 +384,7 @@ app.put("/api/doctors/profile/:userId", async (req, res) => {
         : null;
 
     try {
-      const [result] = await db.execute(
+      const [result] = await db.query(
         `UPDATE doctors SET
            first_name = COALESCE(?, first_name),
            last_name = COALESCE(?, last_name),
@@ -423,7 +419,7 @@ app.put("/api/doctors/profile/:userId", async (req, res) => {
       }
     } catch (colErr) {
       if (colErr.code === "ER_BAD_FIELD_ERROR") {
-        const [result] = await db.execute(
+        const [result] = await db.query(
           `UPDATE doctors SET
              first_name = COALESCE(?, first_name),
              last_name = COALESCE(?, last_name),
@@ -459,7 +455,7 @@ app.put("/api/doctors/profile/:userId", async (req, res) => {
     }
 
     if (fullName) {
-      await db.execute(
+      await db.query(
         "UPDATE users SET full_name = ?, phone = COALESCE(?, phone) WHERE user_id = ?",
         [fullName, phone || null, userId]
       );
@@ -479,7 +475,7 @@ app.put("/api/doctors/signature/:userId", async (req, res) => {
     if (!signature) {
       return res.status(400).json({ success: false, message: "Signature is required." });
     }
-    const [result] = await db.execute(
+    const [result] = await db.query(
       "UPDATE doctors SET signature_data = ? WHERE user_id = ?",
       [signature, userId]
     );
@@ -494,7 +490,7 @@ app.put("/api/doctors/signature/:userId", async (req, res) => {
 });
 app.get("/api/patients", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          p.id_number, p.first_name, p.last_name,
          CONCAT(p.first_name, ' ', p.last_name) AS full_name,
@@ -522,7 +518,7 @@ app.put("/api/patients/profile/:userId", async (req, res) => {
       return res.status(404).json({ success: false, message: "Patient profile not found." });
     }
 
-    await db.execute(
+    await db.query(
       `UPDATE patients SET
          first_name = COALESCE(?, first_name),
          last_name = COALESCE(?, last_name),
@@ -570,7 +566,7 @@ app.put("/api/patients/profile/:userId", async (req, res) => {
         : null;
 
     if (fullName || body.phone) {
-      await db.execute(
+      await db.query(
         `UPDATE users SET full_name = COALESCE(?, full_name), phone = COALESCE(?, phone)
          WHERE user_id = ?`,
         [fullName, body.phone || null, userId]
@@ -589,7 +585,7 @@ app.put("/api/patients/profile/:userId", async (req, res) => {
 });
 app.get("/api/pharmacists", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          pharmacist_id, user_id,
          COALESCE(full_name, CONCAT(IFNULL(first_name,''), ' ', IFNULL(last_name,''))) AS full_name,
@@ -612,7 +608,7 @@ app.put("/api/pharmacists/signature/:userId", async (req, res) => {
     if (!signature) {
       return res.status(400).json({ success: false, message: "Signature is required." });
     }
-    const [result] = await db.execute(
+    const [result] = await db.query(
       "UPDATE pharmacists SET signature_data = ? WHERE user_id = ?",
       [signature, userId]
     );
@@ -627,7 +623,7 @@ app.put("/api/pharmacists/signature/:userId", async (req, res) => {
 });
 app.get("/api/medicines", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT medicine_id, medicine_name, generic_name, category, dosage,
               quantity, reorder_level, unit_price, status,
               expiry_date, date_of_entry, supplier_name, batch_number
@@ -697,7 +693,7 @@ app.post("/api/medicines", async (req, res) => {
     if (qty === 0) status = "Out of Stock";
     else if (qty <= (Number(reorder_level) || 10)) status = "Low Stock";
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `INSERT INTO medicines
         (medicine_name, generic_name, category, description, dosage, quantity,
          reorder_level, unit_price, expiry_date, date_of_entry,
@@ -762,7 +758,7 @@ app.put("/api/medicines/:id", async (req, res) => {
       else finalStatus = "In Stock";
     }
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE medicines SET
          medicine_name = COALESCE(?, medicine_name),
          generic_name = COALESCE(?, generic_name),
@@ -826,7 +822,7 @@ app.post("/api/prescriptions", async (req, res) => {
 
     let signatureToSave = doctor_signature || null;
     if (!signatureToSave) {
-      const [docRows] = await db.execute(
+      const [docRows] = await db.query(
         "SELECT signature_data FROM doctors WHERE doctor_id = ? LIMIT 1",
         [doctor_id]
       );
@@ -913,7 +909,7 @@ app.get("/api/prescriptions", async (req, res) => {
 
 app.get("/api/prescriptions/:id", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT pr.*, CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
               COALESCE(d.full_name, CONCAT(d.first_name, ' ', d.last_name)) AS doctor_name,
               COALESCE(ph.full_name, CONCAT(IFNULL(ph.first_name,''), ' ', IFNULL(ph.last_name,''))) AS dispensed_by_name
@@ -929,7 +925,7 @@ app.get("/api/prescriptions/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "Prescription not found." });
     }
 
-    const [items] = await db.execute(
+    const [items] = await db.query(
       `SELECT pi.*, m.medicine_name, m.unit_price
        FROM prescription_items pi
        JOIN medicines m ON pi.medicine_id = m.medicine_id
@@ -953,7 +949,7 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
       return res.status(400).json({ success: false, message: "Pharmacist userId is required." });
     }
 
-    const [pharmRows] = await db.execute(
+    const [pharmRows] = await db.query(
       `SELECT pharmacist_id, full_name, first_name, last_name, signature_data
        FROM pharmacists WHERE user_id = ? LIMIT 1`,
       [userId]
@@ -966,7 +962,7 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
     const pharmacistId = pharmacist.pharmacist_id;
     const dispenserSignature = signature || pharmacist.signature_data || null;
 
-    const [prescriptionRows] = await db.execute(
+    const [prescriptionRows] = await db.query(
       "SELECT * FROM prescriptions WHERE prescription_id = ?",
       [prescriptionId]
     );
@@ -977,14 +973,14 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
       return res.status(400).json({ success: false, message: "Prescription already dispensed." });
     }
 
-    await db.execute(
+    await db.query(
       `UPDATE prescriptions
        SET status = 'Dispensed', dispensed_by = ?, dispensed_at = NOW(), dispenser_signature = ?
        WHERE prescription_id = ?`,
       [pharmacistId, dispenserSignature, prescriptionId]
     );
 
-    const [items] = await db.execute(
+    const [items] = await db.query(
       `SELECT pi.*, m.unit_price FROM prescription_items pi
        JOIN medicines m ON pi.medicine_id = m.medicine_id
        WHERE pi.prescription_id = ?`,
@@ -997,7 +993,7 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
     });
     pharmacyFee = Math.round(pharmacyFee * 100) / 100;
 
-    const [patientRows] = await db.execute(
+    const [patientRows] = await db.query(
       "SELECT first_name, last_name FROM patients WHERE id_number = ?",
       [prescriptionRows[0].id_number]
     );
@@ -1008,7 +1004,7 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
       pharmacist.full_name ||
       `${pharmacist.first_name || ""} ${pharmacist.last_name || ""}`.trim();
 
-    const [saleResult] = await db.execute(
+    const [saleResult] = await db.query(
       `INSERT INTO pharmacy_sales
         (patient_name, id_number, pharmacy_fee, total_amount, payment_method, payment_status,
          sale_date, pharmacist_id, pharmacist_name)
@@ -1027,12 +1023,12 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
 
     for (const item of items) {
       const subtotal = Number(item.quantity) * Number(item.unit_price || 0);
-      await db.execute(
+      await db.query(
         `INSERT INTO pharmacy_sale_items (sale_id, medicine_id, quantity, unit_price, subtotal)
          VALUES (?, ?, ?, ?, ?)`,
         [saleId, item.medicine_id, item.quantity, item.unit_price || 0, subtotal]
       );
-      await db.execute(
+      await db.query(
         "UPDATE medicines SET quantity = GREATEST(0, quantity - ?) WHERE medicine_id = ?",
         [item.quantity, item.medicine_id]
       );
@@ -1051,7 +1047,7 @@ app.put("/api/prescriptions/:id/dispense", async (req, res) => {
 });
 app.get("/api/pharmacy-sales", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT sale_id, patient_name, id_number, pharmacy_fee, total_amount,
               payment_method, payment_status, sale_date, pharmacist_name
        FROM pharmacy_sales
@@ -1071,7 +1067,7 @@ app.put("/api/pharmacy-sales/:id/status", async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid payment status" });
     }
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE pharmacy_sales
        SET payment_status = ?, payment_method = COALESCE(?, payment_method), updated_at = NOW()
        WHERE sale_id = ?`,
@@ -1090,7 +1086,7 @@ app.put("/api/pharmacy-sales/:id/status", async (req, res) => {
 
 app.get("/api/appointments", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          a.appointment_id,
          a.id_number,
@@ -1149,7 +1145,7 @@ app.get("/api/appointments/my", async (req, res) => {
       sql += " WHERE a.id_number = ?";
       params.push(idNumber);
     } else if (role === "doctor") {
-      const [docRows] = await db.execute(
+      const [docRows] = await db.query(
         "SELECT doctor_id FROM doctors WHERE user_id = ? LIMIT 1",
         [userId]
       );
@@ -1201,7 +1197,7 @@ app.post("/api/appointments/book", async (req, res) => {
       });
     }
 
-    const [docRows] = await db.execute(
+    const [docRows] = await db.query(
       "SELECT available_days FROM doctors WHERE doctor_id = ? LIMIT 1",
       [doctor_id]
     );
@@ -1217,7 +1213,7 @@ app.post("/api/appointments/book", async (req, res) => {
       }
     }
 
-    const [existing] = await db.execute(
+    const [existing] = await db.query(
       `SELECT appointment_id FROM appointments
        WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ?
          AND status NOT IN ('Cancelled')`,
@@ -1230,7 +1226,7 @@ app.post("/api/appointments/book", async (req, res) => {
       });
     }
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `INSERT INTO appointments
         (id_number, doctor_id, appointment_date, appointment_time, reason, status)
        VALUES (?, ?, ?, ?, ?, 'Pending')`,
@@ -1260,7 +1256,7 @@ app.get("/api/appointments/taken", async (req, res) => {
       });
     }
 
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT appointment_time FROM appointments
        WHERE doctor_id = ? AND appointment_date = ? AND status NOT IN ('Cancelled')`,
       [doctorId, date]
@@ -1281,7 +1277,7 @@ app.get("/api/appointments/taken", async (req, res) => {
 
 app.get("/api/appointments/:id/fee", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          a.appointment_id,
          a.id_number,
@@ -1321,7 +1317,7 @@ app.get("/api/appointments/:id/fee", async (req, res) => {
 
 app.get("/api/appointments/:id", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT a.*,
               CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
               COALESCE(d.full_name, CONCAT(d.first_name, ' ', d.last_name)) AS doctor_name
@@ -1344,7 +1340,7 @@ app.put("/api/appointments/:id/status", async (req, res) => {
   try {
     const { status, visit_type } = req.body;
     if (visit_type) {
-      await db.execute(
+      await db.query(
         `UPDATE appointments SET status = ?, visit_type = ? WHERE appointment_id = ?`,
         [status || "Pending", visit_type, req.params.id]
       );
@@ -1362,7 +1358,7 @@ app.put("/api/appointments/:id/status", async (req, res) => {
 
 app.get("/api/appointments/:id/notes", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT appointment_id, notes, visit_type, status
        FROM appointments
        WHERE appointment_id = ?
@@ -1446,7 +1442,7 @@ async function saveAppointmentNotes(req, res) {
       });
     }
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE appointments SET
          notes = ?,
          visit_type = COALESCE(?, visit_type),
@@ -1479,7 +1475,7 @@ app.put("/api/appointments/:id/notes", saveAppointmentNotes);
 
 app.get("/api/bills", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          b.bill_id, b.id_number, b.appointment_id, b.consultation_fee, b.pharmacy_fee,
          b.other_charges, b.total_amount, b.payment_method, b.payment_status,
@@ -1510,7 +1506,7 @@ app.get("/api/bills/patient", async (req, res) => {
       });
     }
 
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          b.bill_id, b.consultation_fee, b.pharmacy_fee, b.other_charges, b.total_amount,
          b.payment_method, b.payment_status, b.bill_date, b.visit_type,
@@ -1533,14 +1529,14 @@ app.get("/api/bills/patient", async (req, res) => {
 app.get("/api/bills/doctor/:userId", async (req, res) => {
   try {
     const userId = Number(req.params.userId);
-    const [docRows] = await db.execute(
+    const [docRows] = await db.query(
       "SELECT doctor_id FROM doctors WHERE user_id = ? LIMIT 1",
       [userId]
     );
     if (!docRows.length) return res.json({ success: true, bills: [] });
 
     const doctorId = docRows[0].doctor_id;
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT
          b.bill_id, b.id_number, b.appointment_id, b.consultation_fee, b.pharmacy_fee,
          b.total_amount, b.payment_method, b.payment_status, b.bill_date, b.visit_type,
@@ -1572,7 +1568,7 @@ app.get("/api/pharmacy-sales/pending-total", async (req, res) => {
         message: "id_number required"
       });
     }
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT COALESCE(
          SUM(
            CASE
@@ -1644,7 +1640,7 @@ app.post("/api/bills", async (req, res) => {
     let pharmacy = Number(pharmacy_fee);
     if (pharmacy == null || isNaN(pharmacy)) {
       try {
-        const [sales] = await db.execute(
+        const [sales] = await db.query(
           `SELECT COALESCE(
              SUM(
                CASE
@@ -1669,7 +1665,7 @@ app.post("/api/bills", async (req, res) => {
     const total =
       total_amount != null ? Number(total_amount) : consult + pharmacy + other;
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `INSERT INTO bills
         (id_number, appointment_id, visit_type, consultation_fee, pharmacy_fee,
          other_charges, total_amount, payment_method, payment_status, bill_date)
@@ -1716,7 +1712,7 @@ app.put("/api/bills/:id/status", async (req, res) => {
       });
     }
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       "UPDATE bills SET payment_status = ? WHERE bill_id = ?",
       [status, req.params.id]
     );
@@ -1726,7 +1722,7 @@ app.put("/api/bills/:id/status", async (req, res) => {
     }
 
     if (status === "Paid" || status === "Claimed") {
-      const [billRows] = await db.execute(
+      const [billRows] = await db.querye(
         "SELECT id_number FROM bills WHERE bill_id = ?",
         [req.params.id]
       );
@@ -1764,7 +1760,7 @@ app.post("/api/contact", async (req, res) => {
       });
     }
 
-    await db.execute(
+    await db.query(
       `INSERT INTO contact_messages
         (name, email, phone_number, subject, message, status,
          patient_deleted, patient_read, admin_read, is_archived, created_at)
@@ -1799,7 +1795,7 @@ app.get("/api/contact/messages/my", async (req, res) => {
       });
     }
 
-    const [users] = await db.execute(
+    const [users] = await db.query(
       "SELECT email FROM users WHERE user_id = ? LIMIT 1",
       [userId]
     );
@@ -1808,7 +1804,7 @@ app.get("/api/contact/messages/my", async (req, res) => {
     }
 
     const email = String(users[0].email).toLowerCase().trim();
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT id AS message_id, name AS full_name, email, phone_number, subject, message,
               COALESCE(status,'New') AS status, admin_reply, patient_reply,
               COALESCE(patient_read,0) AS patient_read, created_at
@@ -1846,7 +1842,7 @@ app.get("/api/contact/messages", async (req, res) => {
 
 app.get("/api/contact/messages/:id", async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT id AS message_id, name AS full_name, email, phone_number, subject, message,
               COALESCE(status,'New') AS status, admin_reply, patient_reply,
               COALESCE(admin_read,0) AS admin_read, created_at
@@ -1876,7 +1872,7 @@ app.put("/api/contact/messages/:id/reply", async (req, res) => {
     if (!reply || !String(reply).trim()) {
       return res.status(400).json({ success: false, message: "Reply is required." });
     }
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE contact_messages
        SET admin_reply = ?, status = 'Replied', admin_read = 1, patient_read = 0
        WHERE id = ?`,
@@ -1902,7 +1898,7 @@ app.put("/api/contact/messages/:id/patient-reply", async (req, res) => {
       return res.status(400).json({ success: false, message: "Reply text is required." });
     }
 
-    const [users] = await db.execute(
+    const [users] = await db.query(
       "SELECT email FROM users WHERE user_id = ? LIMIT 1",
       [userId]
     );
@@ -1912,7 +1908,7 @@ app.put("/api/contact/messages/:id/patient-reply", async (req, res) => {
 
     const email = String(users[0].email).toLowerCase().trim();
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE contact_messages
        SET patient_reply = ?, status = 'Patient Replied', patient_read = 1
        WHERE id = ? AND LOWER(TRIM(email)) = ?`,
@@ -1940,7 +1936,7 @@ app.put("/api/contact/messages/:id/patient-read", async (req, res) => {
       return res.status(400).json({ success: false, message: "userId is required." });
     }
 
-    const [users] = await db.execute(
+    const [users] = await db.query(
       "SELECT email FROM users WHERE user_id = ? LIMIT 1",
       [userId]
     );
@@ -1950,7 +1946,7 @@ app.put("/api/contact/messages/:id/patient-read", async (req, res) => {
 
     const email = String(users[0].email).toLowerCase().trim();
 
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE contact_messages SET patient_read = 1
        WHERE id = ? AND LOWER(TRIM(email)) = ?`,
       [req.params.id, email]
@@ -1976,7 +1972,7 @@ app.put("/api/contact/messages/:id/delete", async (req, res) => {
     if (!userId) {
       return res.status(400).json({ success: false, message: "userId is required." });
     }
-    const [users] = await db.execute(
+    const [users] = await db.query(
       "SELECT email FROM users WHERE user_id = ? LIMIT 1",
       [userId]
     );
@@ -1984,7 +1980,7 @@ app.put("/api/contact/messages/:id/delete", async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." });
     }
     const email = String(users[0].email).toLowerCase().trim();
-    const [result] = await db.execute(
+    const [result] = await db.query(
       `UPDATE contact_messages SET patient_deleted = 1
        WHERE id = ? AND LOWER(TRIM(email)) = ?`,
       [req.params.id, email]
