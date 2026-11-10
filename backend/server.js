@@ -6,13 +6,16 @@ const bcrypt = require("bcryptjs")
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const db = new Pool ({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+const db = process.env.DATABASE_URL ? mysql.createPool(process.env.DATABASE_URL)
+:mysql.createPool({
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "joburg_hospital",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
-
 
 async function testDatabase() {
   try {
