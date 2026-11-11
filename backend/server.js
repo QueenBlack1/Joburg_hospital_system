@@ -7,17 +7,18 @@ const bcrypt = require("bcryptjs");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const db = process.env.DATABASE_URL
-  ? mysql.createPool(process.env.DATABASE_URL)
-  : mysql.createPool({
-      host: process.env.DB_HOST || "localhost",
-      user: process.env.DB_USER || "root",
-      password: process.env.DB_PASSWORD || "",
-      database: process.env.DB_NAME || "joburg_hospital",
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
+const db = mysql.createPool({
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT || 4000,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      ssl: {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: true
+      }
     });
+
 
 async function testDatabase() {
   try {
