@@ -1,4 +1,3 @@
-
 CREATE DATABASE IF NOT EXISTS joburg_hospital
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
@@ -48,10 +47,11 @@ CREATE TABLE IF NOT EXISTS doctors (
   phone VARCHAR(30),
   specialization VARCHAR(150),
   qualification VARCHAR(200),
-  `registration_no.` VARCHAR(100) UNIQUE,
+  registration_number VARCHAR(100) UNIQUE,
   consultation_fee_first_visit DECIMAL(10,2) DEFAULT 0.00,
   consultation_fee_follow_up DECIMAL(10,2) DEFAULT 0.00,
   availability_status ENUM('Available', 'Unavailable', 'On Leave') DEFAULT 'Available',
+  available_days VARCHAR(100) DEFAULT 'Mon,Tue,Wed,Thu,Fri',
   signature_data LONGTEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS medicines (
   reorder_level INT DEFAULT 10,
   unit_price DECIMAL(10,2) DEFAULT 0.00,
   expiry_date DATE,
+  date_of_entry DATE,
   supplier_name VARCHAR(150),
   batch_number VARCHAR(100),
   status ENUM('Available', 'In Stock', 'Low Stock', 'Out of Stock', 'Expired') DEFAULT 'Available',
@@ -247,7 +248,7 @@ CREATE TABLE IF NOT EXISTS bills (
   other_charges DECIMAL(10,2) DEFAULT 0.00,
   total_amount DECIMAL(10,2) DEFAULT 0.00,
   payment_method VARCHAR(50) DEFAULT 'Cash',
-  payment_status ENUM('Pending', 'Paid', 'Partially Paid', 'Cancelled') DEFAULT 'Pending',
+  payment_status ENUM('Pending', 'Paid', 'Claimed', 'Rejected', 'Partially Paid', 'Cancelled') DEFAULT 'Pending',
   bill_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -260,4 +261,23 @@ CREATE TABLE IF NOT EXISTS bills (
   INDEX idx_bill_patient (id_number),
   INDEX idx_bill_status (payment_status),
   INDEX idx_bill_date (bill_date)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  email VARCHAR(150) NOT NULL,
+  phone_number VARCHAR(30) NULL,
+  subject VARCHAR(255) NULL,
+  message TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'New',
+  admin_reply TEXT NULL,
+  patient_reply TEXT NULL,
+  patient_deleted TINYINT(1) DEFAULT 0,
+  patient_read TINYINT(1) DEFAULT 0,
+  admin_read TINYINT(1) DEFAULT 0,
+  is_archived TINYINT(1) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_contact_email (email),
+  INDEX idx_contact_status (status)
 ) ENGINE=InnoDB;
